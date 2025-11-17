@@ -1,0 +1,29 @@
+{
+  "base_url": "https://example.com/shop/",
+  "max_threads": 5,
+  "timeout": 10,
+  "headless": true,
+  "page_load_delay": 2,
+  "output_dir": "output",
+  "images_dir": "output/images",
+  "download_images": true,
+  "fields": [
+    "title",
+    "price",
+    "description",
+    "sku",
+    "images",
+    "categories",
+    "url"
+  ],
+  "selectors": {
+    "product_links": ".products .product a.woocommerce-LoopProduct-link",
+    "title": "h1.product_title",
+    "price": ".price .amount",
+    "description": ".woocommerce-product-details__short-description",
+    "sku": ".sku",
+    "images": ".woocommerce-product-gallery__image img",
+    "categories": ".posted_in a",
+    "pagination_next": ".next.page-numbers"
+  }
+}
