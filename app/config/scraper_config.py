@@ -1,5 +1,5 @@
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 
@@ -14,6 +14,23 @@ class DatabaseConfig:
     password: str = ""
     database: str = "scraped_products"
     table_prefix: str = "wp_"
+
+
+@dataclass
+class LoginConfig:
+    """Login Konfiqurasiyası"""
+
+    enabled: bool = False
+    url: str = ""
+    username: str = ""
+    password: str = ""
+    selectors: Dict[str, str] = field(
+        default_factory=lambda: {
+            "username": "#username",
+            "password": "#password",
+            "submit": "button[name='login']",
+        }
+    )
 
 
 @dataclass
@@ -37,6 +54,9 @@ class ScraperConfig:
 
     # Database konfiqurasiyası
     database: DatabaseConfig = None
+
+    # Login konfiqurasiyası
+    login: LoginConfig = None
 
     def __post_init__(self):
         if self.fields is None:
@@ -66,6 +86,9 @@ class ScraperConfig:
         if self.database is None:
             self.database = DatabaseConfig()
 
+        if self.login is None:
+            self.login = LoginConfig()
+
     @classmethod
     def from_json(cls, filepath: str) -> "ScraperConfig":
         """JSON faylından konfiqurasiya oxu"""
@@ -76,34 +99,19 @@ class ScraperConfig:
         db_data = data.pop("database", {})
         db_config = DatabaseConfig(**db_data) if db_data else DatabaseConfig()
 
+        # Login config ayrıca parse et
+        login_data = data.pop("login", {})
+        login_config = LoginConfig(**login_data) if login_data else LoginConfig()
+
         config = cls(**data)
         config.database = db_config
+        config.login = login_config
 
         return config
 
-    def to_json(self, filepath: str) -> None:
-        """JSON faylına konfiqurasiya yaz"""
-        data = {
-            "base_url": self.base_url,
-            "max_threads": self.max_threads,
-            "timeout": self.timeout,
-            "headless": self.headless,
-            "page_load_delay": self.page_load_delay,
-            "output_dir": self.output_dir,
-            "images_dir": self.images_dir,
-            "download_images": self.download_images,
-            "fields": self.fields,
-            "selectors": self.selectors,
-            "database": {
-                "enabled": self.database.enabled,
-                "host": self.database.host,
-                "port": self.database.port,
-                "user": self.database.user,
-                "password": self.database.password,
-                "database": self.database.database,
-                "table_prefix": self.database.table_prefix,
-            },
-        }
-
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+    def override_settings(
+        self, db_enabled: Optional[bool] = None, output_format: str = "both"
+    ):
+        """CLI arqumentlərinə əsasən ayarları yenilə"""
+        if db_enabled is not None:
+            self.database.enabled = db_enabled
