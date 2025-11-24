@@ -1,5 +1,4 @@
-{
-  "base_url": "https://example.com/shop/",
+ "base_url": "https://ashina-motors.com/shop/",
   "max_threads": 5,
   "timeout": 10,
   "headless": true,
@@ -12,18 +11,28 @@
     "price",
     "description",
     "sku",
+    "oem",
     "images",
     "categories",
     "url"
   ],
   "selectors": {
-    "product_links": ".products .product a.woocommerce-LoopProduct-link",
-    "title": "h1.product_title",
-    "price": ".price .amount",
+    "product_links": "li.product a.woocommerce-LoopProduct-link",
+    "title": "h2.woocommerce-loop-product__title",
+    "price": "span.price .woocommerce-Price-amount",
     "description": ".woocommerce-product-details__short-description",
-    "sku": ".sku",
-    "images": ".woocommerce-product-gallery__image img",
+    "sku": ".product-meta",
+    "oem": "p.oem",
+    "images": ".woocommerce-product-gallery__image img, .woocommerce-loop-product__thumbnail-wrapper img",
     "categories": ".posted_in a",
-    "pagination_next": ".next.page-numbers"
+    "pagination_next": "a.next.page-numbers"
+  },
+  "database": {
+    "enabled": false,
+    "host": "localhost",
+    "port": 3306,
+    "user": "root",
+    "password": "",
+    "database": "scraped_products",
+    "table_prefix": "wp_"
   }
-}

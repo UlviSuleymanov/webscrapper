@@ -11,6 +11,7 @@ class ProductData:
     price: Optional[str] = None
     description: Optional[str] = None
     sku: Optional[str] = None
+    oem: Optional[str] = None
     images: List[str] = None
     categories: List[str] = None
     url: Optional[str] = None
