@@ -1,6 +1,6 @@
-# WordPress Scraper Bot
+# WordPress Product Scraper Bot
 
-Multithread dəstəkli, tam konfigurasiya edilə bilən WordPress scraper.
+Multithread dəstəkli, tam konfigurasiya edilə bilən WordPress məhsul scraper.
 
 ## 🚀 Setup
 
@@ -24,17 +24,55 @@ cp config.json.example config.json
 ## 📝 İstifadə
 
 ```bash
-# Default config ilə
+# Default config ilə (həm fayl həm database)
 python main.py
+
+# Yalnız JSON fayl
+python main.py --format json
+
+# Yalnız database-ə saxla
+python main.py --db-only
+
+# Database olmadan, yalnız fayl
+python main.py --no-db
 
 # Custom config ilə
 python main.py --config custom_config.json
 
-# Output formatı seç
-python main.py --format json
-python main.py --format csv
-python main.py --format both
+# Output formatları
+python main.py --format json      # Yalnız JSON
+python main.py --format csv       # Yalnız CSV
+python main.py --format both      # Həm JSON həm CSV
+python main.py --format none      # Heç bir fayl (yalnız DB)
 ```
+
+## 🗄️ Database Setup
+
+1. **MySQL database yarat:**
+```sql
+CREATE DATABASE scraped_products CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+2. **Config.json-da database parametrlərini düzəlt:**
+```json
+{
+  "database": {
+    "enabled": true,
+    "host": "localhost",
+    "port": 3306,
+    "user": "root",
+    "password": "your_password",
+    "database": "scraped_products",
+    "table_prefix": "wp_"
+  }
+}
+```
+
+3. **Cədvəllər avtomatik yaradılacaq:**
+   - `wp_products` - Məhsul məlumatları
+   - `wp_product_images` - Məhsul şəkilləri
+   - `wp_categories` - Kateqoriyalar
+   - `wp_product_categories` - Məhsul-Kateqoriya əlaqələri
 
 ## 🏗️ Struktur
 

@@ -1,4 +1,5 @@
 import logging
+import sys
 import time
 from datetime import datetime
 from typing import Callable, List, Optional
@@ -11,91 +12,116 @@ from app.services import ScraperService, WebDriverService
 
 
 class WordPressScraper:
-    """Ana scraper class"""
+    """Ana scraper class - Orchestrator"""
 
     def __init__(self, config: ScraperConfig):
         self.config = config
+        self._setup_logging()
 
-        # Setup logging
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s - %(levelname)s - %(message)s",
-            handlers=[logging.FileHandler("scraper.log"), logging.StreamHandler()],
-        )
-
-        # Initialize services və repositories
+        # Dependencies (Traditional injection)
         self.file_repository = FileRepository(config.output_dir)
-        self.database_repository = DatabaseRepository(config.database)
+
+        # Database repository-ni yalnız aktivdirsə initialize edirik
+        self.database_repository = None
+        if self.config.database.enabled:
+            self.database_repository = DatabaseRepository(config.database)
+
         self.webdriver_service = WebDriverService(config)
         self.scraper_service = ScraperService(
             config, self.webdriver_service, self.file_repository
         )
         self.output_formatter = OutputFormatter()
 
+    def _setup_logging(self):
+        # Fayla yazarkən mütləq utf-8 istifadə edirik
+        file_handler = logging.FileHandler("scraper.log", encoding="utf-8")
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        )
+
+        # Ekrana yazarkən standart stdout axınını istifadə edirik
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        )
+
+        logging.basicConfig(
+            level=logging.INFO,
+            handlers=[file_handler, stream_handler],
+        )
+
     def run(
         self,
-        output_format: str = "json",
-        save_to_db: bool = True,
+        save_json: bool = True,
+        save_csv: bool = True,
+        save_db: bool = True,
         custom_formatter: Optional[Callable] = None,
     ) -> List[ProductData]:
-        """Scraper-i işə sal"""
+        """
+        Scraper-i işə sal.
+        Nəyin harada saxlanacağına arqumentlər qərar verir.
+        """
         start_time = time.time()
+        self._log_start(save_json, save_csv, save_db)
 
-        logging.info("=" * 60)
-        logging.info("WordPress Product Scraper başladı")
-        logging.info(f"Base URL: {self.config.base_url}")
-        logging.info(f"Max threads: {self.config.max_threads}")
-        logging.info(
-            f"Database: {'Aktiv' if self.config.database.enabled and save_to_db else 'Deaktiv'}"
-        )
-        logging.info("=" * 60)
-
+        # 1. Scrape Execution
         products = self.scraper_service.scrape_all()
 
         if not products:
-            logging.warning("Heç bir məhsul scrape edilmədi!")
+            logging.warning("Heç bir məhsul tapılmadı.")
             return []
 
-        # Database-ə saxla
-        if self.config.database.enabled and save_to_db:
-            logging.info("Database-ə saxlanır...")
+        # 2. Database Saving
+        if save_db and self.config.database.enabled and self.database_repository:
+            logging.info("Database-ə yazılır...")
             saved_count = self.database_repository.save_products_batch(products)
-            logging.info(f"Database-ə {saved_count} məhsul saxlanıldı")
+            logging.info(f"Database nəticəsi: {saved_count}/{len(products)} sətir.")
+        elif save_db and not self.config.database.enabled:
+            logging.warning("DB yaddaşı istənildi, amma config-də DB deaktivdir.")
 
-        # File-a saxla
-        if output_format != "none":
-            # Format və saxla
-            if custom_formatter:
-                formatted_data = self.output_formatter.apply_custom_format(
-                    products, custom_formatter
-                )
-            else:
-                formatted_data = self.output_formatter.to_dict_list(products)
+        # 3. File Saving
+        if save_json or save_csv:
+            self._save_files(products, save_json, save_csv, custom_formatter)
 
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-            if output_format == "json":
-                self.file_repository.save_json(
-                    formatted_data, f"products_{timestamp}.json"
-                )
-            elif output_format == "csv":
-                self.file_repository.save_csv(
-                    formatted_data, f"products_{timestamp}.csv"
-                )
-            elif output_format == "both":
-                self.file_repository.save_json(
-                    formatted_data, f"products_{timestamp}.json"
-                )
-                self.file_repository.save_csv(
-                    formatted_data, f"products_{timestamp}.csv"
-                )
-
-        elapsed_time = time.time() - start_time
-
-        logging.info("=" * 60)
-        logging.info(f"Scraping tamamlandı!")
-        logging.info(f"Cəmi məhsul: {len(products)}")
-        logging.info(f"Vaxt: {elapsed_time:.2f} saniyə")
-        logging.info("=" * 60)
-
+        self._log_end(len(products), start_time)
         return products
+
+    def _save_files(
+        self,
+        products: List[ProductData],
+        json_flag: bool,
+        csv_flag: bool,
+        formatter: Optional[Callable],
+    ):
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Format Data
+        if formatter:
+            data_to_save = self.output_formatter.apply_custom_format(
+                products, formatter
+            )
+        else:
+            data_to_save = self.output_formatter.to_dict_list(products)
+
+        # Write JSON
+        if json_flag:
+            filename = f"products_{timestamp}.json"
+            self.file_repository.save_json(data_to_save, filename)
+
+        # Write CSV
+        if csv_flag:
+            filename = f"products_{timestamp}.csv"
+            self.file_repository.save_csv(data_to_save, filename)
+
+    def _log_start(self, json_f, csv_f, db_f):
+        logging.info("=" * 60)
+        logging.info("WordPress Product Scraper Başladı")
+        logging.info(f"Targets -> DB: {db_f} | JSON: {json_f} | CSV: {csv_f}")
+        logging.info("=" * 60)
+
+    def _log_end(self, count, start_time):
+        elapsed = time.time() - start_time
+        logging.info("-" * 60)
+        logging.info(f"Proses bitdi. Cəmi: {count} məhsul.")
+        logging.info(f"Vaxt: {elapsed:.2f} saniyə")
+        logging.info("=" * 60)

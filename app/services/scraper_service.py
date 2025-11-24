@@ -8,7 +8,7 @@ from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.wait import WebDriverWait
 
 from app.dto import ProductData
 
@@ -109,7 +109,27 @@ class ScraperService:
                     elem = driver.find_element(
                         By.CSS_SELECTOR, self.config.selectors["sku"]
                     )
-                    product.sku = elem.text.strip()
+                    sku_text = elem.text.strip()
+                    # "SKU: 03128" formatından yalnız nömrəni çıxart
+                    if "SKU:" in sku_text:
+                        product.sku = sku_text.replace("SKU:", "").strip()
+                    else:
+                        product.sku = sku_text
+                except NoSuchElementException:
+                    pass
+
+            # OEM Nömrə
+            if "oem" in self.config.fields and "oem" in self.config.selectors:
+                try:
+                    elem = driver.find_element(
+                        By.CSS_SELECTOR, self.config.selectors["oem"]
+                    )
+                    oem_text = elem.text.strip()
+                    # "OEM Nömrə: 55250-2B000" formatından nömrəni çıxart
+                    if "OEM" in oem_text or "Nömrə" in oem_text:
+                        product.oem = oem_text.split(":")[-1].strip()
+                    else:
+                        product.oem = oem_text
                 except NoSuchElementException:
                     pass
 
@@ -119,12 +139,24 @@ class ScraperService:
                     elems = driver.find_elements(
                         By.CSS_SELECTOR, self.config.selectors["images"]
                     )
-                    product.images = [elem.get_attribute("src") for elem in elems]
+                    product.images = [
+                        elem.get_attribute("src")
+                        for elem in elems
+                        if elem.get_attribute("src")
+                    ]
+                    # Dublikatları sil
+                    product.images = list(dict.fromkeys(product.images))
 
                     # Şəkilləri yüklə
                     if self.config.download_images and product.images:
                         for idx, img_url in enumerate(product.images):
-                            filename = f"{product.sku or 'product'}_{idx}.jpg"
+                            # Fayl adını təmizlə
+                            safe_sku = (
+                                (product.sku or "product")
+                                .replace("/", "-")
+                                .replace("\\", "-")
+                            )
+                            filename = f"{safe_sku}_{idx}.jpg"
                             self.file_repository.download_image(
                                 img_url, filename, self.config.images_dir
                             )

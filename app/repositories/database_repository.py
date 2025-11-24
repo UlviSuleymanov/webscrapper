@@ -63,11 +63,13 @@ class DatabaseRepository:
             price VARCHAR(100),
             description TEXT,
             sku VARCHAR(100) UNIQUE,
+            oem VARCHAR(200),
             url TEXT,
             scraped_at DATETIME,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             INDEX idx_sku (sku),
+            INDEX idx_oem (oem),
             INDEX idx_title (title(255))
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """
@@ -132,12 +134,13 @@ class DatabaseRepository:
                 # Məhsulu insert et və ya update et
                 insert_query = f"""
                 INSERT INTO {self.config.table_prefix}products
-                (title, price, description, sku, url, scraped_at)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                (title, price, description, sku, oem, url, scraped_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                 title = VALUES(title),
                 price = VALUES(price),
                 description = VALUES(description),
+                oem = VALUES(oem),
                 url = VALUES(url),
                 scraped_at = VALUES(scraped_at)
                 """
@@ -149,6 +152,7 @@ class DatabaseRepository:
                         product.price,
                         product.description,
                         product.sku,
+                        product.oem,
                         product.url,
                         product.scraped_at,
                     ),
@@ -263,6 +267,7 @@ class DatabaseRepository:
                         price=result["price"],
                         description=result["description"],
                         sku=result["sku"],
+                        oem=result.get("oem"),
                         url=result["url"],
                         scraped_at=str(result["scraped_at"]),
                     )
@@ -300,6 +305,7 @@ class DatabaseRepository:
                             price=row["price"],
                             description=row["description"],
                             sku=row["sku"],
+                            oem=row.get("oem"),
                             url=row["url"],
                             scraped_at=str(row["scraped_at"]),
                         )
