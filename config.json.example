@@ -1,10 +1,22 @@
- "base_url": "https://ashina-motors.com/shop/",
+{
+  "base_url": "https://ashina-motors.com/shop/",
+  "login": {
+    "enabled": false,
+    "url": "https://ashina-motors.com/my-account/edit-account/",
+    "username": "",
+    "password": "",
+    "selectors": {
+      "username": "#username",
+      "password": "#password",
+      "submit": "button[name='login']"
+    }
+  },
   "max_threads": 5,
   "timeout": 10,
   "headless": true,
   "page_load_delay": 2,
   "output_dir": "output",
-  "images_dir": "output/images",
+  "images_dir": "images",
   "download_images": true,
   "fields": [
     "title",
@@ -18,12 +30,12 @@
   ],
   "selectors": {
     "product_links": "li.product a.woocommerce-LoopProduct-link",
-    "title": "h2.woocommerce-loop-product__title",
-    "price": "span.price .woocommerce-Price-amount",
+    "title": "h1.product_title",
+    "price": "p.price",
     "description": ".woocommerce-product-details__short-description",
-    "sku": ".product-meta",
+    "sku": ".sku",
     "oem": "p.oem",
-    "images": ".woocommerce-product-gallery__image img, .woocommerce-loop-product__thumbnail-wrapper img",
+    "images": ".woocommerce-product-gallery__image img",
     "categories": ".posted_in a",
     "pagination_next": "a.next.page-numbers"
   },
@@ -36,3 +48,4 @@
     "database": "scraped_products",
     "table_prefix": "wp_"
   }
+}
