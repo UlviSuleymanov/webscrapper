@@ -1,6 +1,7 @@
 import csv
 import json
 import logging
+import os
 from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Optional
@@ -42,22 +43,30 @@ class FileRepository:
 
         logging.info(f"CSV saxlanıldı: {filepath}")
 
-    def download_image(self, url: str, filename: str, images_dir: str) -> Optional[str]:
-        """Şəkil yüklə"""
+    def download_image(
+        self, url: str, filename: str, sub_folder: str = ""
+    ) -> Optional[str]:
+        """
+        Şəkil yüklə və tam lokal yolu qaytar (Absolute Path).
+        Məsələn: D:/projects/web/images/sku_123/img.jpg
+        """
         try:
-            images_path = Path(images_dir)
-            images_path.mkdir(parents=True, exist_ok=True)
+            # Əsas şəkil qovluğu + Məhsul qovluğu
+            target_dir = self.output_dir / sub_folder
+            target_dir.mkdir(parents=True, exist_ok=True)
 
             response = requests.get(url, timeout=10, stream=True)
             response.raise_for_status()
 
-            filepath = images_path / filename
+            filepath = target_dir / filename
 
             with open(filepath, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
 
-            return str(filepath)
+            # Absolute path qaytarırıq (OS-dan asılı olaraq tam yol)
+            return str(filepath.resolve())
+
         except Exception as e:
             logging.error(f"Şəkil yüklənərkən xəta: {url} - {str(e)}")
             return None
