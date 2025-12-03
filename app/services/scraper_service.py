@@ -30,6 +30,14 @@ class ScraperService:
         self.session_cookies: List[Dict] = []
         self.global_counter = 0
 
+        # Dayandırma flaqı
+        self.stop_requested = False
+
+    def request_stop(self):
+        """Scraper-i dayandırmaq üçün flaq qoy"""
+        self.stop_requested = True
+        logging.warning("Dayandırma sorğusu qəbul edildi...")
+
     def _get_next_number(self) -> int:
         """Thread-safe counter for folder numbering (1, 2, 3...)"""
         with self.counter_lock:
@@ -94,10 +102,53 @@ class ScraperService:
         except:
             pass
 
+    def _extract_text_safe(
+        self, driver: webdriver.Chrome, selector: str
+    ) -> Optional[str]:
+        """
+        Selector ilə elementi tap və mətni al.
+        Heç bir dəyişiklik etmədən olduğu kimi qaytarır.
+        """
+        try:
+            element = driver.find_element(By.CSS_SELECTOR, selector)
+            text = element.text.strip()
+            return text if text else None
+        except NoSuchElementException:
+            return None
+        except Exception as e:
+            logging.debug(f"Selector '{selector}' oxunarkən xəta: {e}")
+            return None
+
+    def _extract_price(self, driver: webdriver.Chrome) -> Optional[str]:
+        """
+        Qiyməti düzgün çıxar - heç bir dəyişiklik olmadan.
+        Bir neçə variantı yoxla.
+        """
+        price_selectors = [
+            "div.summary p.price span.woocommerce-Price-amount",  # Məhsul səhifəsi
+            "p.price span.woocommerce-Price-amount",
+            "span.price .woocommerce-Price-amount",
+            ".price ins .woocommerce-Price-amount",  # Endirimli qiymət
+            ".price .amount",
+        ]
+
+        for selector in price_selectors:
+            try:
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                if elements:
+                    # Əgər bir neçə qiymət varsa (endirimli), sonuncunu al
+                    price_text = elements[-1].text.strip()
+                    if price_text:
+                        return price_text
+            except:
+                continue
+
+        return None
+
     def _parse_spec_table(self, driver: webdriver.Chrome, product: ProductData):
         """
         Scrapes table.pn-spec-list for ALL attributes.
-        Fills: oem, sku (if missing), and attributes dict.
+        Fills: oem, and attributes dict with ALL fields.
         """
         try:
             # Look for table rows
@@ -120,30 +171,34 @@ class ScraperService:
             for row in rows:
                 cols = row.find_elements(By.TAG_NAME, "td")
                 if len(cols) == 2:
+                    # Sol tərəf - key
                     raw_key = cols[0].text.strip().replace(":", "")
-                    value = cols[1].text.strip()
+                    # Sağ tərəf - value (boş ola bilər)
+                    value = cols[1].text.strip() if cols[1].text.strip() else None
 
-                    if not value or not raw_key:
+                    if not raw_key:
                         continue
 
                     key_lower = raw_key.lower()
 
-                    if "oem" in key_lower:
+                    # OEM-i ayrıca saxla
+                    if "oem" in key_lower and "nömrə" in key_lower:
                         product.oem = value
-                    elif "sku" in key_lower and not product.sku:
-                        product.sku = value
-                    else:
-                        # Capture "Ölçüləri", "Digər adı", etc.
+                        # Həm də attributes-a əlavə et
                         product.attributes[raw_key] = value
-        except Exception:
-            pass
+                    else:
+                        # Bütün digər field-ləri attributes-a əlavə et (boş olsa belə)
+                        product.attributes[raw_key] = value
+
+            logging.debug(f"Table attributes: {product.attributes}")
+        except Exception as e:
+            logging.debug(f"Table parse xətası: {e}")
 
     def scrape_product(
         self, url: str, driver: webdriver.Chrome
     ) -> Optional[ProductData]:
         try:
             driver.get(url)
-            # Reduced sleep to 1s to save time, increase if internet is slow
             time.sleep(1)
             wait = WebDriverWait(driver, self.config.timeout)
 
@@ -160,39 +215,41 @@ class ScraperService:
             except:
                 product.wp_id = str(self._get_next_number())
 
-            # --- Basic Fields ---
-            try:
-                product.title = wait.until(
-                    EC.presence_of_element_located(
-                        (By.CSS_SELECTOR, self.config.selectors["title"])
-                    )
-                ).text.strip()
-            except:
-                pass
+            # --- Title ---
+            product.title = self._extract_text_safe(
+                driver, self.config.selectors["title"]
+            )
 
-            try:
-                product.price = driver.find_element(
-                    By.CSS_SELECTOR, self.config.selectors["price"]
-                ).text.strip()
-            except:
-                pass
+            # --- Price (Düzəldilmiş) ---
+            product.price = self._extract_price(driver)
 
-            try:
-                product.description = driver.find_element(
-                    By.CSS_SELECTOR, self.config.selectors["description"]
-                ).text.strip()
-            except:
-                pass
+            # Əgər hələ də tapılmadısa, config selector-dan cəhd et
+            if not product.price:
+                product.price = self._extract_text_safe(
+                    driver, self.config.selectors["price"]
+                )
+
+            # --- Description ---
+            product.description = self._extract_text_safe(
+                driver, self.config.selectors["description"]
+            )
 
             # --- SKU ---
             try:
-                sku_text = driver.find_element(
-                    By.CSS_SELECTOR, ".sku_wrapper .sku"
-                ).text.strip()
+                # Birinci variant: .sku_wrapper içində .sku
+                sku_element = driver.find_element(By.CSS_SELECTOR, ".sku_wrapper .sku")
+                sku_text = sku_element.text.strip()
                 if sku_text:
                     product.sku = sku_text
-            except:
-                pass
+            except NoSuchElementException:
+                # İkinci variant: sadəcə .sku
+                try:
+                    sku_element = driver.find_element(By.CSS_SELECTOR, ".sku")
+                    sku_text = sku_element.text.strip()
+                    if sku_text:
+                        product.sku = sku_text
+                except:
+                    pass
 
             # --- CRITICAL: Table Parser ---
             self._parse_spec_table(driver, product)
@@ -202,20 +259,22 @@ class ScraperService:
                 product.categories = [
                     e.text.strip()
                     for e in driver.find_elements(By.CSS_SELECTOR, ".posted_in a")
+                    if e.text.strip()
                 ]
             except:
                 pass
+
             try:
                 product.tags = [
                     e.text.strip()
                     for e in driver.find_elements(By.CSS_SELECTOR, ".tagged_as a")
+                    if e.text.strip()
                 ]
             except:
                 pass
 
             # --- Images (Strict: Main Gallery Only) ---
             try:
-                # Strictly select the gallery div
                 gallery = driver.find_element(
                     By.CSS_SELECTOR, ".woocommerce-product-gallery"
                 )
@@ -224,13 +283,34 @@ class ScraperService:
                 image_urls = []
                 seen = set()
                 for img in img_elems:
-                    src = img.get_attribute("data-large_image") or img.get_attribute(
-                        "src"
+                    # Prioritet: data-large_image > data-src > src
+                    src = (
+                        img.get_attribute("data-large_image")
+                        or img.get_attribute("data-src")
+                        or img.get_attribute("src")
                     )
-                    # Filter out tiny icons or unrelated images
-                    if src and src not in seen and "http" in src:
-                        image_urls.append(src)
-                        seen.add(src)
+                    # Filter out tiny icons, zoom images, and unrelated images
+                    if (
+                        src
+                        and src not in seen
+                        and "http" in src
+                        and "zoomImg" not in img.get_attribute("class")
+                        or ""
+                    ):
+                        # Thumbnail-ları və kiçik şəkilləri filtrələ
+                        if not any(
+                            x in src
+                            for x in [
+                                "-100x100.",
+                                "-150x150.",
+                                "-32x32.",
+                                "-24x",
+                                "-36x",
+                                "-48x",
+                            ]
+                        ):
+                            image_urls.append(src)
+                            seen.add(src)
 
                 # --- FOLDER NAMING: NUMBER + TITLE ---
                 counter = self._get_next_number()
@@ -252,10 +332,13 @@ class ScraperService:
                     product.images = local_paths
                 else:
                     product.images = image_urls
-            except:
+            except Exception as e:
+                logging.debug(f"Şəkil scrape xətası {url}: {e}")
                 pass
 
-            logging.info(f"Scraped: {product.title} | ID: {product.wp_id}")
+            logging.info(
+                f"Scraped: {product.title} | Price: {product.price} | ID: {product.wp_id}"
+            )
             return product
 
         except Exception as e:
@@ -264,9 +347,13 @@ class ScraperService:
 
     def scrape_product_worker(self, url: str):
         """Worker with strict resource cleanup"""
+        # Dayandırma yoxlaması
+        if self.stop_requested:
+            logging.info(f"Dayandırma flaqı aktiv - atlayırıq: {url}")
+            return None
+
         driver = None
         try:
-            # Create driver
             driver = self.webdriver_service.create_driver()
 
             if self.config.login.enabled:
@@ -280,43 +367,60 @@ class ScraperService:
             return p
 
         except WebDriverException as e:
-            logging.error(
-                f"WebDriver crashed for {url}. System might be overloaded. Error: {e}"
-            )
-            # If driver failed to create, wait a bit before letting thread continue
+            logging.error(f"WebDriver crashed for {url}. Error: {e}")
             time.sleep(5)
             return None
         except Exception as e:
             logging.error(f"Unexpected error in worker: {e}")
             return None
         finally:
-            # CRITICAL CLEANUP: Ensure process dies
             if driver:
                 try:
-                    driver.close()  # Close tab
+                    driver.close()
                 except:
                     pass
                 try:
-                    driver.quit()  # Kill process
+                    driver.quit()
                 except:
                     pass
-
-            # Small pause to let OS reclaim RAM/CPU
             time.sleep(1)
 
     def get_product_links(self, driver):
         links = []
         curr = self.config.base_url
+
         while curr:
+            # Dayandırma yoxlaması
+            if self.stop_requested:
+                logging.warning("Link toplama dayandırıldı.")
+                break
+
+            # Test mode limit yoxlaması
+            if self.config.test_mode and len(links) >= self.config.test_limit:
+                logging.info(
+                    f"Test limit çatdı: {self.config.test_limit} link toplandı."
+                )
+                break
+
             try:
                 driver.get(curr)
                 time.sleep(self.config.page_load_delay)
                 els = driver.find_elements(
                     By.CSS_SELECTOR, self.config.selectors["product_links"]
                 )
-                links.extend([e.get_attribute("href") for e in els])
+                new_links = [
+                    e.get_attribute("href") for e in els if e.get_attribute("href")
+                ]
+                links.extend(new_links)
 
-                logging.info(f"Links found so far: {len(links)}")
+                logging.info(
+                    f"Səhifə scrape olundu: {len(new_links)} link | Ümumi: {len(links)}"
+                )
+
+                # Test mode-da limit yoxlaması
+                if self.config.test_mode and len(links) >= self.config.test_limit:
+                    logging.info(f"Test limit çatdı: {len(links)} link toplandı.")
+                    break
 
                 try:
                     curr = driver.find_element(
@@ -327,10 +431,20 @@ class ScraperService:
             except Exception as e:
                 logging.error(f"Crawling stopped/error: {e}")
                 break
+
+        # Test mode-da limit tətbiq et
+        if self.config.test_mode:
+            links = links[: self.config.test_limit]
+
         return list(set(links))
 
     def scrape_all(self):
         logging.info("Starting Scraper...")
+
+        if self.config.test_mode:
+            logging.warning(
+                f"⚠️  TEST MODE AKTIV - Yalnız {self.config.test_limit} məhsul scrape olunacaq"
+            )
 
         # 1. Get Links (Single Driver)
         driver = self.webdriver_service.create_driver()
@@ -348,12 +462,18 @@ class ScraperService:
         logging.info(f"Found {len(links)} products. Starting threads...")
 
         # 2. Process with Limit
-        # ThreadPoolExecutor ensures we never have more than max_threads active
         with ThreadPoolExecutor(max_workers=self.config.max_threads) as executor:
             futures = {executor.submit(self.scrape_product_worker, u): u for u in links}
 
             completed = 0
             for future in as_completed(futures):
+                if self.stop_requested:
+                    logging.warning(
+                        "Dayandırma sorğusu - gözləyən tapşırıqlar ləğv edilir..."
+                    )
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    break
+
                 completed += 1
                 if completed % 10 == 0:
                     logging.info(f"Progress: {completed}/{len(links)}")

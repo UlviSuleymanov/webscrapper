@@ -46,6 +46,10 @@ class ScraperConfig:
     images_dir: str = "images"
     download_images: bool = True
 
+    # Test üçün limit
+    test_mode: bool = False
+    test_limit: int = 10
+
     # Scrape ediləcək field-lər
     fields: List[str] = None
 
@@ -110,8 +114,18 @@ class ScraperConfig:
         return config
 
     def override_settings(
-        self, db_enabled: Optional[bool] = None, output_format: str = "both"
+        self,
+        db_enabled: Optional[bool] = None,
+        output_format: str = "both",
+        test_mode: Optional[bool] = None,
+        test_limit: Optional[int] = None,
     ):
         """CLI arqumentlərinə əsasən ayarları yenilə"""
         if db_enabled is not None:
             self.database.enabled = db_enabled
+
+        if test_mode is not None:
+            self.test_mode = test_mode
+
+        if test_limit is not None:
+            self.test_limit = test_limit
