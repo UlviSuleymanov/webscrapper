@@ -23,20 +23,6 @@ cp config.json.example config.json
 
 ## 📝 İstifadə
 
-### ⚡ TƏK MƏHSUL TESTİ (ƏN SÜRƏTLƏ)
-
-Bir məhsulu 10 saniyədə test edin:
-
-```bash
-python test_single.py https://ashina-motors.com/product/filter-yanacaq-6/
-```
-
-Bu sizə göstərəcək:
-- ✅ Hansı field-lər scrape olunub
-- ❌ Hansı field-lər eksikdir
-- 📋 Attributes table-dəki bütün məlumatlar
-- 🖼️ Şəkillərin siyahısı
-- 💾 JSON faylı: `output/test_result.json`
 
 ### Test Rejimi (Bir Neçə Məhsul)
 
